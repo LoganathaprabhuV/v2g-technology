@@ -1,0 +1,139 @@
+#include <Arduino.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// Pin Definitions
+#define SLIDE_SWITCH_1_PIN 34
+#define SLIDE_SWITCH_2_PIN 35
+#define MOTOR_A_IN1_PIN 32
+#define MOTOR_A_IN2_PIN 33
+#define MOTOR_B_IN1_PIN 25
+#define MOTOR_B_IN2_PIN 26
+#define RELAY_PIN 27
+#define AC_VOLTAGE_SENSOR_PIN 36
+#define DC_VOLTAGE_SENSOR_PIN 39
+#define DC_CURRENT_SENSOR_PIN 15
+
+// LCD I2C Address (Check using an I2C scanner if needed)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Constants & PWM Settings
+const float DC_VOLTAGE_THRESHOLD = 11.0;
+
+#define MOTOR_PWM_FREQ 5000
+#define MOTOR_PWM_RESOLUTION 8
+#define MOTOR_A_IN1_CHANNEL 0
+#define MOTOR_A_IN2_CHANNEL 1
+#define MOTOR_B_IN1_CHANNEL 2
+#define MOTOR_B_IN2_CHANNEL 3
+
+const int MOTOR_PWM_MAX = 255;
+
+unsigned long previousMillis = 0;
+const long MOTOR_CONTROL_INTERVAL = 1000;  
+
+void setup() {
+    Serial.begin(115200);
+    
+    // Initialize LCD
+    lcd.init();
+    lcd.backlight();
+    lcd.setCursor(0, 0);
+    lcd.print("System Starting...");
+    delay(2000);
+    lcd.clear();
+
+    // Set pin modes
+    pinMode(SLIDE_SWITCH_1_PIN, INPUT);
+    pinMode(SLIDE_SWITCH_2_PIN, INPUT);
+    pinMode(RELAY_PIN, OUTPUT);
+    pinMode(AC_VOLTAGE_SENSOR_PIN, INPUT);
+    pinMode(DC_VOLTAGE_SENSOR_PIN, INPUT);
+    pinMode(DC_CURRENT_SENSOR_PIN, INPUT);
+
+    // Setup PWM for motors
+    /*ledcSetup(MOTOR_A_IN1_CHANNEL, MOTOR_PWM_FREQ, MOTOR_PWM_RESOLUTION);
+    ledcAttachPin(MOTOR_A_IN1_PIN, MOTOR_A_IN1_CHANNEL);
+
+    ledcSetup(MOTOR_A_IN2_CHANNEL, MOTOR_PWM_FREQ, MOTOR_PWM_RESOLUTION);
+    ledcAttachPin(MOTOR_A_IN2_PIN, MOTOR_A_IN2_CHANNEL);
+
+    ledcSetup(MOTOR_B_IN1_CHANNEL, MOTOR_PWM_FREQ, MOTOR_PWM_RESOLUTION);
+    ledcAttachPin(MOTOR_B_IN1_PIN, MOTOR_B_IN1_CHANNEL);
+
+    ledcSetup(MOTOR_B_IN2_CHANNEL, MOTOR_PWM_FREQ, MOTOR_PWM_RESOLUTION);
+    ledcAttachPin(MOTOR_B_IN2_PIN, MOTOR_B_IN2_CHANNEL);*/
+}
+
+void loop() {
+    int switch1State = digitalRead(SLIDE_SWITCH_1_PIN);
+    int switch2State = digitalRead(SLIDE_SWITCH_2_PIN);
+
+    if (switch1State == HIGH) {
+        motorAControl();
+    } else {
+        motorBControl();
+    }
+
+    // Read sensor values
+    float acVoltage = analogRead(AC_VOLTAGE_SENSOR_PIN) * (3.3 / 4095.0) * 100;
+    float dcVoltage = analogRead(DC_VOLTAGE_SENSOR_PIN) * (3.3 / 4095.0) * 10;
+    float dcCurrent = analogRead(DC_CURRENT_SENSOR_PIN) * (3.3 / 4095.0) * 10;
+
+    // Control relay based on DC voltage
+    bool relayState = (dcVoltage < DC_VOLTAGE_THRESHOLD);
+    digitalWrite(RELAY_PIN, relayState ? HIGH : LOW);
+
+    // Display data on LCD
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("AC:");
+    lcd.print(acVoltage, 1);
+    lcd.print("V DC:");
+    lcd.print(dcVoltage, 1);
+    lcd.setCursor(0, 1);
+    lcd.print("I:");
+    lcd.print(dcCurrent, 1);
+    lcd.print("A R:");
+    lcd.print(relayState ? "ON " : "OFF");
+
+    // Print to Serial Monitor
+    Serial.print("AC Voltage: "); Serial.print(acVoltage);
+    Serial.print(" V, DC Voltage: "); Serial.print(dcVoltage);
+    Serial.print(" V, DC Current: "); Serial.print(dcCurrent);
+    Serial.print(" A, Relay: ");
+    Serial.println(relayState ? "ON" : "OFF");
+
+    delay(500);
+}
+
+// Function to control Motor A
+void motorAControl() {
+    ledcWrite(MOTOR_A_IN1_CHANNEL, MOTOR_PWM_MAX);
+    ledcWrite(MOTOR_A_IN2_CHANNEL, 0);
+    Serial.println("Motor A: Forward");
+    delay(2000);
+
+    ledcWrite(MOTOR_A_IN1_CHANNEL, 0);
+    ledcWrite(MOTOR_A_IN2_CHANNEL, MOTOR_PWM_MAX);
+    Serial.println("Motor A: Reverse");
+    delay(2000);
+}
+
+// Function to simulate 50Hz AC with Motor B
+void motorBControl() {
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= MOTOR_CONTROL_INTERVAL) {
+        previousMillis = currentMillis;
+        
+        ledcWrite(MOTOR_B_IN1_CHANNEL, MOTOR_PWM_MAX);
+        ledcWrite(MOTOR_B_IN2_CHANNEL, 0);
+        delay(10);
+        
+        ledcWrite(MOTOR_B_IN1_CHANNEL, 0);
+        ledcWrite(MOTOR_B_IN2_CHANNEL, MOTOR_PWM_MAX);
+        delay(10);
+
+        Serial.println("Motor B: Simulating 50Hz AC");
+    }
+}
